@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESL Snakes & Ladders WebRTC Game</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .board-grid {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      grid-template-rows: repeat(10, minmax(0, 1fr));
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 text-center shadow-lg">
+    <h1 class="text-3xl font-extrabold text-amber-400 tracking-wide">🐍 Snakes & Ladders 🪜</h1>
+    <p class="text-slate-400 text-sm mt-1">ESL Edition - Practice Speaking & Grammar Online!</p>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left Column: Controls & Video Chat -->
+    <section class="space-y-6 flex flex-col">
+      
+      <!-- Connection Panel -->
+      <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md">
+        <h2 class="text-xl font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <span>🌐</span> Connection Setup
+        </h2>
+        
+        <div id="setup-controls" class="space-y-4">
+          <div>
+            <label class="text-xs font-semibold uppercase text-slate-400">Your Peer ID</label>
+            <div class="flex gap-2 mt-1">
+              <input id="my-id" type="text" readonly placeholder="Generating ID..." 
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono text-sm focus:outline-none">
+              <button onclick="copyMyId()" class="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition">
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-700">
+            <label class="text-xs font-semibold uppercase text-slate-400">Connect to Opponent</label>
+            <div class="flex gap-2 mt-1">
+              <input id="peer-id-input" type="text" placeholder="Paste Opponent's ID" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-400">
+              <button onclick="connectToPeer()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm transition">
+                Connect
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="status-badge" class="mt-4 p-2.5 rounded-lg bg-slate-900/60 border border-slate-700 text-center text-xs font-semibold text-slate-400">
+          Status: <span id="status-text" class="text-amber-400">Waiting for PeerJS...</span>
+        </div>
+      </div>
+
+      <!-- Video Feed Area -->
+      <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-md flex-1 flex flex-col justify-between">
+        <h2 class="text-xl font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <span>📹</span> Video Call
+        </h2>
+        
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="relative bg-slate-900 aspect-video rounded-lg overflow-hidden border border-slate-700">
+            <video id="local-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+            <span class="absolute bottom-1 left-1 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] text-slate-300">You</span>
+          </div>
+          <div class="relative bg-slate-900 aspect-video rounded-lg overflow-hidden border border-slate-700">
+            <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
+            <span class="absolute bottom-1 left-1 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] text-slate-300">Opponent</span>
+          </div>
+        </div>
+
+        <button id="toggle-cam-btn" onclick="toggleMedia()" class="w-full py-2 bg-slate-700 hover:bg-slate-600 text-sm font-semibold rounded-lg transition">
+          Start Camera & Mic
+        </button>
+      </div>
+
+    </section>
+
+    <!-- Center/Right Column: Game Board & Interaction -->
+    <section class="lg:col-span-2 space-y-6 flex flex-col">
+      
+      <!-- Game Action Bar -->
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-wrap items-center justify-between gap-4 shadow-md">
+        <div class="flex items-center gap-4">
+          <button id="roll-btn" disabled onclick="rollDice()" class="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black px-6 py-3 rounded-xl shadow-lg transition text-lg">
+            🎲 Roll Dice
+          </button>
+          <div class="text-center">
+            <div id="dice-result" class="text-3xl font-black text-amber-400">-</div>
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider">Dice</div>
+          </div>
+        </div>
+
+        <div id="turn-indicator" class="text-sm font-bold bg-slate-900 px-4 py-2 rounded-lg border border-slate-700">
+          Turn: <span id="current-turn-text" class="text-amber-400">Not Started</span>
+        </div>
+      </div>
+
+      <!-- ESL Prompt Display -->
+      <div id="question-box" class="bg-slate-800 p-5 rounded-xl border-2 border-amber-500/50 shadow-md min-h-[100px] flex flex-col justify-center">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-1">Current Task / Question</h3>
+        <p id="prompt-text" class="text-slate-200 text-base md:text-lg font-medium">
+          Connect with a peer and roll the dice to start playing!
+        </p>
+      </div>
+
+      <!-- Board View -->
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-xl flex-1 flex items-center justify-center">
+        <div id="board" class="board-grid w-full aspect-square max-w-[600px] bg-slate-900 border-2 border-slate-700 rounded-lg overflow-hidden relative">
+          <!-- Board cells will be generated via JavaScript -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // --- ESL Prompts Data ---
+    const eslPrompts = {
+      1: "Start! Say hello to your opponent.",
+      2: "Describe your favorite hobby.",
+      3: "What did you eat for breakfast today?",
+      4: "Ladder! Move to 14. What are your weekend plans?",
+      5: "Name 5 fruits in English.",
+      6: "Correct the sentence: 'She don't like apples.'",
+      7: "What is your favorite movie and why?",
+      8: "Name 3 items in your bedroom.",
+      9: "Ladder! Move to 31. Talk about your best friend.",
+      10: "Spell the word 'BEAUTIFUL'.",
+      11: "What is the weather like today?",
+      12: "Name 4 green vegetables.",
+      13: "What time do you usually wake up?",
+      14: "Use 'always' and 'never' in two sentences.",
+      15: "Snake! Slide down to 6.",
+      16: "What is your dream job?",
+      17: "Name 3 wild animals.",
+      18: "Ladder! Move to 38. Describe your city.",
+      19: "Ask your opponent a question about their family.",
+      20: "What is the past tense of 'Go', 'Eat', and 'See'?",
+      21: "Ladder! Move to 42. Say 3 things you are good at.",
+      22: "Snake! Slide down to 11.",
+      23: "What is your favorite animal?",
+      24: "Name 5 colors in English.",
+      25: "Describe what you are wearing right now.",
+      26: "What did you do last night?",
+      27: "Snake! Slide down to 15.",
+      28: "Ladder! Move to 84. Talk about your favorite holiday.",
+      29: "Name 3 things you can find in a kitchen.",
+      30: "Say three sentences using 'can' for ability.",
+      31: "Describe your favorite teacher.",
+      32: "What is your favorite song?",
+      33: "Correct the sentence: 'He can plays soccer very well.'",
+      34: "Name 4 sports played with a ball.",
+      35: "Snake! Slide down to 22.",
+      36: "Ladder! Move to 44. What will you do tomorrow?",
+      37: "Name 3 outdoor activities.",
+      38: "What is your favorite season and why?",
+      39: "Ask your opponent a 'Would you rather' question.",
+      40: "Spell the word 'DIFFICULT'.",
+      41: "What makes you happy?",
+      42: "Describe your daily morning routine.",
+      43: "Name 3 items in your bag or backpack.",
+      44: "Snake! Slide down to 23.",
+      45: "What is your favorite food to cook?",
+      46: "Name 5 school subjects.",
+      47: "Ladder! Move to 67. Describe your favorite store.",
+      48: "What country would you love to visit?",
+      49: "Snake! Slide down to 33.",
+      50: "Use the word 'because' in a complete sentence.",
+      51: "Ladder! Move to 67.",
+      52: "Name 3 electronic devices you use every day.",
+      53: "What is your favorite day of the week?",
+      54: "Snake! Slide down to 34.",
+      55: "Describe the house or apartment you live in.",
+      56: "What is the opposite of 'hot', 'fast', and 'big'?",
+      57: "Name 4 types of transportation.",
+      58: "What is something you dislike doing?",
+      59: "Ask your opponent about their job or school.",
+      60: "Spell the word 'WEDNESDAY'.",
+      61: "What did you do on your last birthday?",
+      62: "Snake! Slide down to 19.",
+      63: "Ladder! Move to 81. Talk about a skill you want to learn.",
+      64: "Name 3 things you see in this room right now.",
+      65: "What is your favorite restaurant?",
+      66: "Correct the sentence: 'There is many people here.'",
+      67: "Describe your personality in 3 words.",
+      68: "Name 3 modes of public transport.",
+      69: "Snake! Slide down to 31.",
+      70: "Ladder! Move to 91. What is your favorite book?",
+      71: "Use 'should' to give your opponent advice.",
+      72: "What is your favorite animal sound?",
+      73: "Snake! Slide down to 53.",
+      74: "Ladder! Move to 95.",
+      75: "Name 5 items of clothing.",
+      76: "Describe your ideal vacation destination.",
+      77: "What is your favorite subject in school/work?",
+      78: "Snake! Slide down to 43.",
+      79: "Ask your opponent what they like to do on weekends.",
+      80: "Name 3 famous people you know.",
+      81: "What is your biggest fear?",
+      82: "Snake! Slide down to 61.",
+      83: "Name 4 sea animals.",
+      84: "Describe your favorite dessert.",
+      85: "What is something funny that happened to you recently?",
+      86: "Use 'must' and 'must not' in two rules for class.",
+      87: "Snake! Slide down to 24.",
+      88: "Name 3 things you do before going to sleep.",
+      89: "Correct the sentence: 'I have 20 years old.'",
+      90: "What is your favorite memory from childhood?",
+      91: "Ladder! Move to 99.",
+      92: "Snake! Slide down to 73.",
+      93: "What is a good habit you have?",
+      94: "Name 3 places in a city (e.g., library).",
+      95: "Describe your favorite type of music.",
+      96: "Snake! Slide down to 75.",
+      97: "Say 3 things you will do next summer.",
+      98: "Snake! Slide down to 79.",
+      99: "So close! Tell your opponent a riddle or short story.",
+      100: "🎉 WINNER! Congratulations!"
+    };
+
+    const snakesAndLadders = {
+      4: 14, 9: 31, 15: 6, 18: 38, 21: 42, 22: 11, 27: 15, 28: 84,
+      35: 22, 36: 44, 44: 23, 47: 67, 49: 33, 51: 67, 54: 34, 62: 19,
+      63: 81, 69: 31, 70: 91, 73: 53, 74: 95, 78: 43, 82: 61, 87: 24,
+      91: 99, 92: 73, 96: 75, 98: 79
+    };
+
+    // --- State Variables ---
+    let peer = null;
+    let conn = null;
+    let localStream = null;
+    let myPlayerNumber = 1; // 1 or 2
+    let currentTurn = 1;
+    let positions = { 1: 1, 2: 1 };
+
+    // --- PeerJS & Networking ---
+    function initPeer() {
+      peer = new Peer();
+
+      peer.on('open', (id) => {
+        document.getElementById('my-id').value = id;
+        updateStatus('Ready to connect or receive connection.');
+      });
+
+      peer.on('connection', (connection) => {
+        conn = connection;
+        myPlayerNumber = 2; // Joining player is Player 2
+        setupConnectionHandlers();
+        updateStatus('Connected to Player 1!');
+        document.getElementById('setup-controls').classList.add('hidden');
+        updateTurnDisplay();
+      });
+
+      peer.on('call', (call) => {
+        if (localStream) {
+          call.answer(localStream);
+          call.on('stream', (remoteStream) => {
+            document.getElementById('remote-video').srcObject = remoteStream;
+          });
+        }
+      });
+
+      peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        updateStatus('Error: ' + err.type);
+      });
+    }
+
+    function connectToPeer() {
+      const peerId = document.getElementById('peer-id-input').value.trim();
+      if (!peerId) return alert('Please enter a valid Peer ID');
+
+      conn = peer.connect(peerId);
+      myPlayerNumber = 1; // Host player is Player 1
+      setupConnectionHandlers();
+      updateStatus('Connecting...');
+      document.getElementById('setup-controls').classList.add('hidden');
+
+      // Initiate Call if stream exists
+      if (localStream) {
+        const call = peer.call(peerId, localStream);
+        call.on('stream', (remoteStream) => {
+          document.getElementById('remote-video').srcObject = remoteStream;
+        });
+      }
+    }
+
+    function setupConnectionHandlers() {
+      conn.on('open', () => {
+        updateStatus(`Connected as Player ${myPlayerNumber}`);
+        updateTurnDisplay();
+      });
+
+      conn.on('data', (data) => {
+        handleIncomingData(data);
+      });
+
+      conn.on('close', () => {
+        updateStatus('Connection closed.');
+        document.getElementById('setup-controls').classList.remove('hidden');
+      });
+    }
+
+    function sendData(data) {
+      if (conn && conn.open) {
+        conn.send(data);
+      }
+    }
+
+    function handleIncomingData(data) {
+      if (data.type === 'MOVE') {
+        positions[data.player] = data.newPosition;
+        currentTurn = data.nextTurn;
+        document.getElementById('dice-result').innerText = data.diceRoll;
+        updateBoard();
+        displayPrompt(data.newPosition);
+        updateTurnDisplay();
+      }
+    }
+
+    // --- WebRTC Media Controls ---
+    async function toggleMedia() {
+      const btn = document.getElementById('toggle-cam-btn');
+      if (!localStream) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          document.getElementById('local-video').srcObject = localStream;
+          btn.innerText = "Camera Active";
+          btn.classList.replace('bg-slate-700', 'bg-emerald-600');
+
+          // If connected, start call
+          if (conn) {
+            const call = peer.call(conn.peer, localStream);
+            call.on('stream', (remoteStream) => {
+              document.getElementById('remote-video').srcObject = remoteStream;
+            });
+          }
+        } catch (err) {
+          console.error("Media error:", err);
+          alert("Could not access camera/microphone.");
+        }
+      }
+    }
+
+    // --- Game Logic ---
+    function renderBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+
+      // Generate 100 squares (Boustrophedon pattern: snake pattern bottom-up)
+      for (let r = 9; r >= 0; r--) {
+        const isEvenRow = (r % 2 === 0);
+        for (let c = 0; c < 10; c++) {
+          const col = isEvenRow ? (9 - c) : c;
+          const squareNum = (r * 10) + col + 1;
+
+          const square = document.createElement('div');
+          square.id = `square-${squareNum}`;
+          
+          // Alternating tile colors
+          const isDark = (squareNum % 2 === 0);
+          square.className = `relative border border-slate-700/50 flex flex-col items-center justify-center p-1 font-bold text-[10px] sm:text-xs select-none ${
+            isDark ? 'bg-slate-800/80 text-slate-400' : 'bg-slate-800/40 text-slate-500'
+          }`;
+
+          // Add Snake/Ladder Indicators
+          if (snakesAndLadders[squareNum]) {
+            const isLadder = snakesAndLadders[squareNum] > squareNum;
+            square.classList.add(isLadder ? 'bg-emerald-950/30' : 'bg-rose-950/30');
+          }
+
+          square.innerHTML = `<span class="absolute top-0.5 left-1 opacity-60">${squareNum}</span><div id="tokens-${squareNum}" class="flex gap-1 z-10 mt-2"></div>`;
+          board.appendChild(square);
+        }
+      }
+      updateBoard();
+    }
+
+    function updateBoard() {
+      // Clear previous tokens
+      for (let i = 1; i <= 100; i++) {
+        const container = document.getElementById(`tokens-${i}`);
+        if (container) container.innerHTML = '';
+      }
+
+      // Draw Player 1
+      const p1Box = document.getElementById(`tokens-${positions[1]}`);
+      if (p1Box) {
+        p1Box.innerHTML += `<div class="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-md transform scale-110" title="Player 1"></div>`;
+      }
+
+      // Draw Player 2
+      const p2Box = document.getElementById(`tokens-${positions[2]}`);
+      if (p2Box) {
+        p2Box.innerHTML += `<div class="w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow-md transform scale-110" title="Player 2"></div>`;
+      }
+    }
+
+    function rollDice() {
+      if (currentTurn !== myPlayerNumber) return;
+
+      const dice = Math.floor(Math.random() * 6) + 1;
+      document.getElementById('dice-result').innerText = dice;
+
+      let currentPos = positions[myPlayerNumber];
+      let newPos = currentPos + dice;
+
+      if (newPos > 100) {
+        newPos = currentPos; // Must land exactly on 100
+      }
+
+      // Check for Snakes or Ladders
+      if (snakesAndLadders[newPos]) {
+        newPos = snakesAndLadders[newPos];
+      }
+
+      positions[myPlayerNumber] = newPos;
+      const nextTurn = myPlayerNumber === 1 ? 2 : 1;
+
+      // Update UI local
+      updateBoard();
+      displayPrompt(newPos);
+
+      // Send to Peer
+      sendData({
+        type: 'MOVE',
+        player: myPlayerNumber,
+        diceRoll: dice,
+        newPosition: newPos,
+        nextTurn: nextTurn
+      });
+
+      currentTurn = nextTurn;
+      updateTurnDisplay();
+    }
+
+    function displayPrompt(pos) {
+      const prompt = eslPrompts[pos] || "Answer your opponent's question!";
+      document.getElementById('prompt-text').innerText = prompt;
+    }
+
+    function updateTurnDisplay() {
+      const rollBtn = document.getElementById('roll-btn');
+      const turnText = document.getElementById('current-turn-text');
+
+      const isMyTurn = (currentTurn === myPlayerNumber);
+      rollBtn.disabled = !isMyTurn || !conn;
+
+      if (!conn) {
+        turnText.innerText = "Waiting for connection...";
+        turnText.className = "text-amber-400";
+      } else if (isMyTurn) {
+        turnText.innerText = `YOUR TURN (Player ${myPlayerNumber})`;
+        turnText.className = "text-emerald-400 font-extrabold";
+      } else {
+        turnText.innerText = `Opponent's Turn (Player ${currentTurn})`;
+        turnText.className = "text-slate-400";
+      }
+    }
+
+    function updateStatus(msg) {
+      document.getElementById('status-text').innerText = msg;
+    }
+
+    function copyMyId() {
+      const myIdInput = document.getElementById('my-id');
+      myIdInput.select();
+      navigator.clipboard.writeText(myIdInput.value);
+      alert('ID copied to clipboard!');
+    }
+
+    // --- Initialize Application ---
+    window.onload = () => {
+      renderBoard();
+      initPeer();
+    };
+  </script>
+</body>
+</html>
